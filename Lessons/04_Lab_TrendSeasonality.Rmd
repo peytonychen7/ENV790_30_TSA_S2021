@@ -61,8 +61,8 @@ Here we use the function my() from package lubridate.
 
 ```{r}
 #using package lubridate
-my_date <- paste(raw_inflow_data[,1],raw_inflow_data[,2],sep="-")
-my_date <- my(my_date)  #function my from package lubridate
+my_date <- paste(raw_inflow_data[,1],"01", raw_inflow_data[,2],sep="-")
+my_date <- mdy(my_date)  #function my from package lubridate
 head(my_date)
 #add that to inflow_data and store in a new data frame 
 inflow_data <- cbind(my_date,raw_inflow_data[,3:(3+nhydro-1)])
