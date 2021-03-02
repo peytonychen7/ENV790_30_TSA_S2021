@@ -1,0 +1,251 @@
+---
+title: "ENV 790.30 - Time Series Analysis for Energy Data | Spring 2021"
+subtitle: "Assignment 3 - Due date 02/12/21"
+author: "Peyton Chen (yc451)"
+output: pdf_document
+geometry: margin=2.54cm
+---
+  
+## Directions
+  
+You should open the .rmd file corresponding to this assignment on RStudio. The file is available on our class repository on Github. 
+
+Once you have the project open the first thing you will do is change "Student Name" on line 3 with your name. 
+Then you will start working through the assignment by  **creating code and output** that answer each question. Be sure to use this assignment document. Your report should contain the answer to each question and any plots/tables you obtained (when applicable).
+
+Please keep this R code chunk options for the report. It is easier for us to grade when we can see code and output together. And the tidy.opts will make sure that line breaks on your code chunks are automatically added for better visualization. 
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(echo = TRUE,tidy.opts=list(width.cutoff=80), tidy=FALSE) 
+```
+
+When you have completed the assignment, **Knit** the text and code into a single PDF file. Rename the pdf file such that it includes your first and last name (e.g., "LuanaLima_TSA_A01_Sp21.Rmd"). Submit this pdf using Sakai. 
+
+## Questions 
+
+Consider the same data you used for A2 from the spreadsheet "Table_10.1_Renewable_Energy_Production_and_Consumption_by_Source.xlsx". The data comes from the US Energy Information and Administration and corresponds to the January 2021 Monthly Energy Review. Once again you will work only with the following columns: Total Biomass Energy Production, Total Renewable Energy Production, Hydroelectric Power Consumption. Create a data frame structure with these three time series only. 
+
+R packages needed for this assignment:"forecast","tseries", and "Kendall". Install these packages, if you haven't done yet. Do not forget to load them before running your script, since they are NOT default packages.\\
+
+```{r load_library, warning = FALSE, message = FALSE}
+#Load/install required package here
+
+library(forecast)
+library(tseries)
+library(Kendall)
+library(readxl)
+library(tidyverse)
+
+```
+
+```{r load_data}
+#Importing data set
+Data <- read_excel(path = "Table_10.1_Renewable_Energy_Production_and_Consumption_by_Source.xlsx",
+                   sheet = "Monthly Data",
+                   skip = 9, col_names = TRUE)
+
+Data <- Data[2:nrow(Data),]
+# Select the variables that we are going to use
+Data <- Data %>% 
+  select("Month",
+         "Total Biomass Energy Production", 
+         "Total Renewable Energy Production", 
+         "Hydroelectric Power Consumption")
+head(Data)
+
+#transform the data frame into a time series object
+ts_data <- ts(data = Data, start = c(1973,1), end = c(2020,10),frequency = 12)
+
+```
+
+
+## Trend Component
+
+### Q1
+Create a plot window that has one row and three columns. And then for each object on your data frame, fill the plot window with time series plot, ACF and PACF. You may use the some code form A2, but I want all three plots on the same window this time. (Hint: watch videos for M4)
+
+```{r Q1}
+col_names <- c("Month","Biomass","Renewable","Hydroelectric")
+
+for (p in 2:4){
+  par(mfrow = c(1,3))
+  plot(ts_data[,p], main = paste0(col_names[p]," Time Series"))
+  autocorr <- acf(x = ts_data[,p],lag.max = 100,type = "correlation", plot = FALSE)
+  plot(autocorr,main = paste0(col_names[p], " ACF"))
+  
+  pautocorr <- acf(x = ts_data[,p],lag.max = 100,type = "partial",plot = FALSE)
+  plot(pautocorr,main = paste0(col_names[p]," PACF"))
+  
+}
+  
+  
+```
+
+
+### Q2
+From the plot in Q1, do the series Total Biomass Energy Production, Total Renewable Energy Production, Hydroelectric Power Consumption appear to have a trend? If yes, what kind of trend?
+
+#### Answer:
+From the plots in Q1, it appears that Total Biomass Energy Production and Total Renewable Energy Production have an overall upward movement from 1973 to 2020. No seasonal components are observed for these two variables. Hydroelectric Power Consumption appears to have a seasonal trend, since its the autocorrelation plot converges to 0 quickly and flucutates around 0.
+
+
+### Q3
+Use the *lm()* function to fit a linear trend to the three time series. Ask R to print the summary of the regression. Interpret the regression output, i.e., slope and intercept. Save the regression coefficients for further analysis.
+
+
+```{r lm_bio}
+t <- c(1:nrow(Data)) # Create a vector t
+
+lm_bio <- lm(Data[,2, drop = TRUE] ~ t)
+
+summary(lm_bio)
+beta0_bio = as.numeric(lm_bio$coefficients[1])
+beta1_bio = as.numeric(lm_bio$coefficients[2])
+
+```
+#### Answer:
+From the summary of the regression, we see that the slope $\beta_1 = 0.4702$ is statistically significant at the $\alpha = 0.05$ level. With slope $\beta_1 = 0.4702$, the model estimates the Biomass Energy Production increases by an average of 0.4702 (Trillion Btu) per month. The intercept $\beta_0 = 135.525$ estimates the average biomass energy production at t = 0. It may not be useful apart from building the model. 
+
+```{r lm_renew}
+
+lm_renew <- lm(Data[,3, drop = TRUE] ~ t)
+summary(lm_renew)
+beta0_renew = as.numeric(lm_renew$coefficients[1])
+beta1_renew = as.numeric(lm_renew$coefficients[2])
+
+```
+
+#### Answer:
+From the summary of the regression, we see that the slope $\beta_1 = 0.8430$ is statistically significant at the $\alpha = 0.05$ level. With slope $\beta_1 = 0.8430$, the model estimates the Renewable Energy Production increases by an average of 0.8430 (Trillion Btu) per month. The intercept $\beta_0 = 330.3716$ estimates the average renewable energy production at t = 0. It may not be useful apart from building the model.
+
+```{r lm_hydro}
+lm_hydro <- lm(Data[,4, drop = TRUE] ~ t)
+summary(lm_hydro)
+beta0_hydro = as.numeric(lm_hydro$coefficients[1])
+beta1_hydro = as.numeric(lm_hydro$coefficients[2])
+```
+
+#### Answer:
+From the summary of the regression, we see that the slope $\beta_1 = -0.0734$ is statistically significant at the $\alpha = 0.05$ level. With slope $\beta_1 = -0.0734$, the model estimates the hydroelectric power consumption decreases by an average of 0.0734 (Trillion Btu) per month. The intercept $\beta_0 = 258.0562$ estimates the average hydroelectric power consumption at t = 0. It may not be useful apart from building the model.
+
+### Q4
+Use the regression coefficients from Q3 to detrend the series. Plot the detrended series and  compare with the plots from Q1. What happened? Did anything change?
+
+```{r Q4_bio}
+detrend_bio <- as.numeric(Data[,2, drop = TRUE])-(beta0_bio+beta1_bio*t)
+
+ggplot(Data, aes(x = Month, y = as.numeric(Data[,2, drop = TRUE]))) +
+  geom_line(color = "blue") +
+  geom_smooth(color = "red", method = "lm")+
+  ylab("Total Biomass Energy Production")+
+  geom_line(aes(y = detrend_bio), color = "green") +
+  geom_smooth(aes(y = detrend_bio), color = "orange", method = "lm") +
+  ggtitle("Biomass Time Series Plot (Blue) vs Detrend Series Plot (Green)")
+```
+
+```{r Q4_renew}
+detrend_renew <- as.numeric(Data[,3, drop = TRUE])-(beta0_renew+beta1_renew*t)
+
+ggplot(Data, aes(x = Month, y = as.numeric(Data[,3, drop = TRUE]))) +
+  geom_line(color = "blue") +
+  geom_smooth(color = "red", method = "lm")+
+  ylab("Total Renewable Energy Production")+
+  geom_line(aes(y = detrend_renew), color = "green") +
+  geom_smooth(aes(y = detrend_renew), color = "orange", method = "lm") +
+  ggtitle("Renewable Time Series Plot (Blue) vs Detrend Series Plot (Green)")
+```
+
+```{r Q4_hydro}
+detrend_hydro <- as.numeric(Data[,4, drop = TRUE])-(beta0_hydro+beta1_hydro*t)
+
+ggplot(Data, aes(x = Month, y = as.numeric(Data[,4, drop = TRUE]))) +
+  geom_line(color = "blue") +
+  geom_smooth(color = "red", method = "lm")+
+  ylab("Total Hydroelectric Power Consumption")+
+  geom_line(aes(y = detrend_hydro), color = "green") +
+  geom_smooth(aes(y = detrend_hydro), color = "orange", method = "lm") +
+  ggtitle("Hydroelectric Time Series Plot (Blue) vs Detrend Series Plot (Green)")
+```
+
+#### Answer:
+From the plots above, we can see that the detrend series (green line) kept the seasonal variation but removed the increasing or decreasing trend in the original series. This makes sense as the detrend series is the series where we subtract the origin series by the time series regression model. If we fit a regression model for the detrend series, the regression lines (orange lines) are flat at 0.
+
+### Q5
+Plot ACF and PACF for the detrended series and compare with the plots from Q1. Did the plots change? How?
+
+```{r}
+detrend_sum = data.frame(detrend_bio,detrend_renew, detrend_hydro)
+for (p in 1:3){
+  par(mfrow = c(1,2))
+  autocorr <- acf(x = detrend_sum[,p],lag.max = 100,type = "correlation", plot = FALSE)
+  plot(autocorr,main = paste0(col_names[p + 1], "acf"))
+  pautocorr <- acf(x = detrend_sum[,p],lag.max = 100,type = "partial",plot = FALSE)
+  plot(pautocorr,main = paste0(col_names[p + 1], "pacf"))
+}
+```
+
+#### Answer:
+From the plots above, it appears the partial autocorrelation plots are similar to those in Q1. But the autocorrelation plots fluctuate more widly than those in Q1. 
+
+## Seasonal Component
+
+Set aside the detrended series and consider the original series again from Q1 to answer Q6 to Q8.
+
+### Q6
+Do the series seem to have a seasonal trend? Which serie/series? Use function *lm()* to fit a seasonal means model to this/these time series. Ask R to print the summary of the regression. Interpret the regression output. Save the regression coefficients for further analysis.
+
+
+#### Answer:
+Hydroelectric Power Consumption seems to have a seasonal trend. The other two series do not appear to have a seasonal trend.
+
+```{r Q6}
+dummies <- seasonaldummy(ts_data[,4])
+lm_season <- lm(Data[,4,drop = TRUE] ~ dummies)
+summary(lm_season)
+
+beta_season_int <- lm_season$coefficients[1]
+beta_season_coeff <- lm_season$coefficients[2:12]
+
+
+```
+
+
+From the model summary above, we can see that all the intercept and all the coefficients are statistically significant at $\alpha = 0.5$ level except for January, February, and July. The intercept represents the seasonality in December. The coefficients for each month is the model's estimate of difference in the seasonal component from the previous month. 
+
+### Q7
+Use the regression coefficients from Q6 to deseason the series. Plot the deseason series and compare with the plots from part Q1. Did anything change?
+
+```{r}
+#compute seasonal component
+seas_comp=array(0,nrow(Data))
+for(i in 1:nrow(Data)){
+  seas_comp[i]=(beta_season_int+beta_season_coeff%*%dummies[i,])
+}
+
+deseason_hydro <- as.numeric(Data[,4, drop = TRUE])- seas_comp
+
+ggplot(Data, aes(x = Month, y = as.numeric(Data[,4, drop = TRUE]))) +
+  geom_line(color = "blue") +
+  ylab("Hydroelectric Power Consumption in (Trillion Btu)")+
+  geom_line(aes(y = deseason_hydro), color = "red") +
+  ggtitle("Hydroelectric Time Series Plot(Blue) vs Deseasion Series Plot (Red)")
+```
+
+#### Answer:
+The deseason series is different from the original series as seasonal components are removed from the original series. It preserves the overall trend of the original series but seasonal components are removed.  
+
+### Q8
+Plot ACF and PACF for the deseason series and compare with the plots from Q1. Did the plots change? How?
+
+```{r}
+par(mfrow = c(1,2))
+autocorr <- acf(x = seas_comp,lag.max = 100,
+                type = "correlation", plot = FALSE)
+plot(autocorr,main = paste0(col_names[4], " acf"))
+pautocorr <- acf(x = seas_comp,lag.max = 100,
+                 type = "partial",plot = FALSE)
+plot(pautocorr,main = paste0(col_names[4], " pacf"))
+```
+
+#### Answer
+The autocorrelation plot and partial autocorrelation plot fluctuate more wildly than the plots in Q1. The autocorrelation plot here reaches to -0.5 while the autocorrelation in Q1 only reaches -0.2 when the autocorrelation goes below 0.

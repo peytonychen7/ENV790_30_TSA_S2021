@@ -1,0 +1,351 @@
+---
+title: "ENV 790.30 - Time Series Analysis for Energy Data | Spring 2021"
+subtitle: "Assignment 4 - Due date 02/25/21"
+author: "Peyton Chen (yc451)"
+output: pdf_document
+geometry: margin=2.54cm
+---
+  
+## Directions
+  
+  You should open the .rmd file corresponding to this assignment on RStudio. The file is available on our class repository on Github. And to do so you will need to fork our repository and link it to your RStudio.  
+
+Once you have the project open the first thing you will do is change "Student Name" on line 3 with your name. 
+Then you will start working through the assignment by  **creating code and output** that answer each question. Be sure to use this assignment document. Your report should contain the answer to each question and any plots/tables you obtained (when applicable).
+
+When you have completed the assignment, **Knit** the text and code into a single PDF file. Rename the pdf file such that it includes your first and last name (e.g., "LuanaLima_TSA_A04_Sp21.Rmd"). Submit this pdf using Sakai. 
+
+## Questions 
+
+Consider the same data you used for A2 from the spreadsheet "Table_10.1_Renewable_Energy_Production_and_Consumption_by_Source.xlsx". The data comes from the US Energy Information and Administration and corresponds to the January 2021 Monthly Energy Review.
+
+R packages needed for this assignment:"forecast","tseries", and "Kendall". Install these packages, if you haven't done yet. Do not forget to load them before running your script, since they are NOT default packages.\\
+
+```{r load_lib, warning=FALSE, message=FALSE}
+#Load/install required package here
+
+library(forecast)
+library(tseries)
+library(Kendall)
+
+library(readxl)
+library(tidyverse)
+library(lubridate)
+```
+
+
+## Stochastic Trend and Stationarity Test
+
+For this part you will once again work only with the following columns: Total Biomass Energy Production, Total Renewable Energy Production, Hydroelectric Power Consumption. Create a data frame structure with these three time series and the Date column. Don't forget to format the date object.
+
+```{r}
+inflow_data <- read_excel(path = "Table_10.1_Renewable_Energy_Production_and_Consumption_by_Source.xlsx",
+                   sheet = "Monthly Data",
+                   skip = 9, col_names = TRUE)[-1,]
+
+Data <- inflow_data %>% 
+  select("Month",
+         "Total Biomass Energy Production", 
+         "Total Renewable Energy Production", 
+         "Hydroelectric Power Consumption") %>% 
+  rename(Biomass = `Total Biomass Energy Production`,
+         Renewable = `Total Renewable Energy Production`,
+         Hydroelectric = `Hydroelectric Power Consumption`) %>% 
+  mutate(Month = ymd(Month),
+         Biomass = as.numeric(Biomass),
+         Renewable = as.numeric(Renewable),
+         Hydroelectric = as.numeric(Hydroelectric))
+
+
+
+head(Data)
+
+nvar <- ncol(Data)
+nobs <- nrow(Data)
+
+```
+
+### Q1
+Now let's try to difference these three series using function diff(). Start with the original data from part (b). Try differencing first at lag 1 and plot the remaining series. Did anything change? Do the series still seem to have trend?
+
+
+```{r}
+col_names <- c("Total Biomass Energy Production",
+              "Total Renewable Energy Production",
+              "Hydroelectric Power Consumption")
+
+for (p in 1:3){
+  Diff <- diff(Data[,p+1, drop = TRUE], differences = 1)
+  df_full <- data.frame(
+    Month = Data$Month,
+    Original = Data[,p+1, drop = TRUE],
+    Diff = c(NA,Diff)
+  ) %>% na.omit
+  
+  
+  plot_i <- ggplot(df_full) +
+    geom_line(aes(x = Month, y = Original)) +
+    geom_line(aes(x = Month, y = Diff), color = "Red") +
+    labs(x = "Year",
+         y = paste0(col_names[p], "(Trillion Btu)"),
+         title = paste0("Original (Black) and Differenced (Red) Time Series for ", col_names[p]))
+  
+  print(plot_i)
+  
+}
+```
+
+After differencing the time series for biomass energy production and renewable energy production, the increase trend was removed. Based on the differenced time series for hydroelectric data, it seems like we still have seasonality in the trend.
+
+
+### Q2
+Compute Mann-Kendall and Spearman's Correlation Rank Test for each time series. Ask R to print the results. Interpret the results. 
+
+#### Biomass Energy Data
+
+```{r, warning=FALSE}
+ts_data <- ts(data = Data[,2:nvar], frequency = 12)
+t <- 1:nobs
+
+MKtest_bio <- MannKendall(ts_data[,1])
+print(summary(MKtest_bio))
+
+sp_rho_bio  <- cor.test(x = ts_data[,1], 
+                        y = t,
+                        method="spearman")
+print(sp_rho_bio)
+
+
+```
+
+From the Mann Kendall test result, we have a p-value close to 0, which suggests we have strong evidence to reject the null hypothesis that the biomass production energy data is stationary. 
+
+From the Spearman Correlation test result, we have a rho of 0.8646 and a p-value close to 0, which also provides a strong evidence to reject the null hypothesis that the biomass production energy data is stationary.
+
+We can conclude that the biomass production energy data follows a trend.
+
+
+#### Renewable Energy Data
+
+```{r, warning=FALSE}
+MKtest_renew <- MannKendall(ts_data[,2])
+print(summary(MKtest_renew))
+
+sp_rho_renew  <- cor.test(x = ts_data[,2], 
+                        y = t,
+                        method="spearman")
+print(sp_rho_renew)
+
+```
+
+From the Mann Kendall test result, we have a p-value close to 0, which suggests we have strong evidence to reject the null hypothesis that the renewable production energy data is stationary. 
+
+From the Spearman Correlation test result, we have a rho of 0.8238 and a p-value close to 0, which also provides a strong evidence to reject the null hypothesis that the renewable production energy data is stationary.
+
+We can conclude that the renewable production energy data follows a trend.
+
+
+#### Hydroelectric Power Data
+
+```{r, warning=FALSE}
+SMKtest_hydro <- SeasonalMannKendall(ts_data[,3])
+print(summary(SMKtest_hydro))
+
+print(sp_rho_renew)
+
+```
+As we have seen in the previous assignment, there is a seasonal component for the Hyproelectric power consumption data. Therefore, we use a Seasonal Mann Kendall test instead. From the test result, we have a p-value close to 0, which provides a strong evidence that the Hydroelectric power consumption data also follows a trend.
+
+Since the spearman corrleation test cannot handle seasonality, I perform a spearman correlation test in two ways:
+
+First, I deseasoned the time series for the Hydroelectric data and perform the Spearman correlation test on the deasoned series.
+
+Second, I also tried to use the groupdata of Hydroelectric power consumption by comparing the yearly average of the consumption to the year using the Spearman correlation test.
+
+```{r, warning=FALSE}
+decomposed_hydro <- decompose(x= ts_data[,3], type = "additive")
+deseaonsed_hydro <- decomposed_hydro$x - decomposed_hydro$seasonal
+sp_rho_hydro <- cor.test(x = deseaonsed_hydro, 
+                        y = t,
+                        method="spearman")
+print(sp_rho_hydro)
+
+Hydro_yearly <- Data %>% 
+  mutate(Year = year(Month)) %>% 
+  group_by(Year) %>% 
+  summarise(mean(Hydroelectric))
+
+head(Hydro_yearly)
+sp_rho_hydro <- cor.test(x = Hydro_yearly[,2, drop = TRUE], 
+                        y = Hydro_yearly[,1, drop = TRUE],
+                        method="spearman")
+print(sp_rho_hydro)
+```
+From the Spearman Correlation test results above, we have a rho of - 0.4189 for the deasonsed series and -0.4921 for the groupdata. Both p-value are close to 0, which also provides a strong evidence to reject the null hypothesis that the Hydroelectric power consumption data is stationary.
+
+We can conclude that the Hydroelectric power consumption data follows a trend.
+
+## Decomposing the series
+
+For this part you will work only with the following columns: Solar Energy Consumption and Wind Energy Consumption. 
+
+### Q3
+
+Create a data frame structure with these two time series only and the Date column. Drop the rows with *Not Available* and convert the columns to numeric. You can use filtering to eliminate the initial rows or conver to numeric and then use the drop_na() function. If you are familiar with pipes for data wrangling, try using it!
+
+```{r}
+Data <- inflow_data %>% 
+  select(Month ,`Solar Energy Consumption`, `Wind Energy Consumption`) %>%
+  filter(`Solar Energy Consumption` != "Not Available",
+         `Wind Energy Consumption` != "Not Available") %>% 
+  rename(Solar_Energy = `Solar Energy Consumption`,
+         Wind_Energy = `Wind Energy Consumption`) %>% 
+  mutate(Month = ymd(Month),
+         Solar_Energy = as.numeric(Solar_Energy),
+         Wind_Energy = as.numeric(Wind_Energy))
+
+nobs <- nrow(Data)
+nvars <- ncol(Data)
+
+
+head(Data)
+
+
+```
+
+### Q4
+
+Plot the Solar and Wind energy consumption over time using ggplot. Explore the function scale_x_date() on ggplot and see if you can change the x axis to improve your plot.
+Hint: use *scale_x_date(date_breaks = "5 years", date_labels = "%Y")")*
+
+Try changing the color of the wind series to blue. Hint: use *color = "blue"*
+
+```{r}
+ggplot(Data) +
+  geom_line(aes(x = Month, y = Solar_Energy)) + 
+  geom_line(aes(x = Month, y = Wind_Energy), color = "blue") +
+  scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+  labs(x = "Year", 
+       y = "Energy Consumption (Trillion Btu)",
+       title = "Time Series for Solar (Black) and Wind (Blue) Energy Consumption ") +
+  theme_bw()
+```
+
+### Q5
+
+Transform wind and solar series into a time series object and apply the decompose function on them using the additive option. What can you say about the trend component? What about the random component? Does the random component look random? Or does it appear to still have some seasonality on it?
+
+```{r}
+ts_data <- ts(data = Data[,2:nvars],frequency = 12)
+# head(ts_data)
+
+decomposed_Solar_add <- decompose(x= ts_data[,"Solar_Energy"], type = "additive")
+
+# par(mfrow = c(2,2))
+
+plot(decomposed_Solar_add)  
+# plot(decomposed_Solar_add$random)  
+
+```
+
+For the solar data under the additive model, the trend component remained flat until around the year of 2010. The trend components started to increase linearly after the year of 2010.
+
+The random component center around 0 and did not fluctuate widely until the year of 2015. It fluctuates more wildly as the trend component increases, so it does not seem random.
+
+```{r}
+decomposed_Wind_add <- decompose(x= ts_data[,"Wind_Energy"], type = "additive")
+plot(decomposed_Wind_add) 
+# plot(decomposed_Wind_add$random) 
+
+```
+
+The wind data under the additive model has a similar pattern as the solar data. The trend component remained flat until around the year of 2005. The trend components started to increase linearly after the year of 2005.
+
+The random component does not seem random either. It started to fluctuate more widely as the trend component increases linearly.
+
+### Q6
+
+Use the decompose function again but now change the type of the seasonal component from additive to multiplicative.
+What happened to the random component this time? 
+```{r}
+decomposed_Solar_multi <- decompose(x= ts_data[,"Solar_Energy"], type = "multiplicative")
+plot(decomposed_Solar_multi)  
+# plot(decomposed_Solar_multi$random)  
+
+
+```
+
+For the solar data under the multiplicative model, the random component seemed random and fluctuated relatively widely for the first six years or so. This was the period when the solar energy production was minimal. Once the production level starts to increase (though not significantly as in the 2010's), the impact of the random component diminishes and does not seem random.     
+
+```{r}
+decomposed_Wind_multi <- decompose(x= ts_data[,"Wind_Energy"], type = "multiplicative")
+plot(decomposed_Wind_multi) 
+# plot(decomposed_Wind_multi$random) 
+
+```
+
+For the wind data under the multiplicative model, the random component seemed random and fluctuated relatively widely for the first 15 years or so. This was the period when the wind energy production was minimal. Once the production level starts to increase, the impact of the random component diminishes and does not seem random.
+
+### Q7
+
+When fitting a model to this data, do you think you need all the historical data? Think about the date from 90s and early 20s. Are there any information from those year we might need to forecast the next six months of Solar and/or Wind consumption. Explain your response.
+
+
+Time Series Decomposition for solar data after 1990 and after 2010
+
+
+```{r}
+Data_post90 <- Data %>% 
+  filter(Month >= "1990-01-01")
+
+ts_data_p90 <- ts(Data_post90[,2:nvars], 
+                  # start = 1, end = nrow(Data_post90),
+                    frequency = 12)
+
+decomposed_Solar_add <- decompose(x= ts_data_p90[,"Solar_Energy"], type = "additive")
+plot(decomposed_Solar_add)
+
+```
+
+
+Time Series Decomposition for wind data after 1990 and after 2010
+
+```{r}
+
+decomposed_Wind_add <- decompose(x= ts_data_p90[,"Wind_Energy"], type = "additive")
+plot(decomposed_Wind_add)
+
+
+
+```
+
+
+When fitting a model to this data, I do not think we need all the historical data because the Solar Energy Consumption and Wind Energy Consumption are very small compared to the consumption level from 2010 to 2020. Therefore, if we want to make prediction for solar and wind energy consumption for the next few months, data prior to 2000 may not provide useful information. 
+
+What can also be helpful to forecast the next few months of the six months of Solar and/or Wind consumption is to investigate what triggered the significant increase in Solar consumption starting around the year of 2010 and what triggered the significant increase in wind consumption around the year of 2005.
+One possibility could be due to the increase in the production of renewable energy starting the year of 2005 (as shown in the trend plot and time series plot below). 
+
+Obtaining other related information would be helpful for us to forecast the solar and wind consumption level by looking at the energy policy and current practice in the renewable energy field. 
+
+```{r}
+Data_1 <- inflow_data %>% 
+  select("Month",
+         "Total Renewable Energy Production") %>% 
+  rename(Renewable = `Total Renewable Energy Production`) %>% 
+  mutate(Month = ymd(Month),
+         Renewable = as.numeric(Renewable))
+
+ts_data1 <- ts(Data_1[,2], frequency = 12)
+decomposed_renew <- decompose(ts_data1)
+
+
+plot(decomposed_renew$trend)
+
+ggplot(Data_1, aes(x = Month, y = Renewable)) +
+  geom_line() + 
+  labs(x = "Year",
+       y = "Renewable Energy Production (Trillion Btu)",
+       title = "Time Series plot for Renewable Energy Production")
+
+```
+
